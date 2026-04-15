@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CubeRNG v3.5 - STAFF FIX 🔐</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root { --gold: #ffd700; --red: #ff4444; --neon: #00f2ff; --green: #0f4; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; touch-action: none; }
+        
+        #loading-screen { position: fixed; inset: 0; background: #000; z-index: 20000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #load-bar-bg { width: 250px; height: 10px; background: #222; border-radius: 10px; margin-top: 20px; overflow: hidden; }
+        #load-bar { width: 0%; height: 100%; background: var(--neon); box-shadow: 0 0 15px var(--neon); transition: 0.1s; }
+
+        .screen, .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(0,0,0,0.96); z-index: 8000; }
+        .card { background: #111; padding: 25px; border-radius: 20px; border: 1px solid #333; width: 310px; text-align: center; max-height: 85vh; overflow-y: auto; }
+        .btn { padding: 12px; width: 100%; margin: 6px 0; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; text-transform: uppercase; background: #eee; color: #000; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); }
+        input, textarea { width: 90%; padding: 12px; margin: 8px 0; background: #000; border: 1px solid #333; color: #fff; border-radius: 10px; }
+        .scroll { height: 180px; overflow-y: auto; background: #050505; margin: 10px 0; padding: 10px; border-radius: 10px; text-align: left; font-size: 13px; border: 1px solid #222; }
+
+        #hud { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 500; }
+        #stats { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 15px; border-left: 6px solid var(--neon); pointer-events: auto; }
+        #global-msg { position: fixed; top: 0; width: 100%; background: var(--gold); color: #000; text-align: center; font-weight: bold; padding: 12px; z-index: 10000; display: none; }
+        
+        #joy-base { position: absolute; bottom: 70px; left: 70px; width: 110px; height: 110px; background: rgba(255,255,255,0.05); border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); pointer-events: auto; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 40px; height: 40px; background: #fff; border-radius: 50%; }
+        #actions { position: absolute; bottom: 40px; right: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; pointer-events: auto; }
+        .act-btn { width: 70px; height: 70px; border-radius: 50%; background: #111; border: 2px solid #fff; color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <h1 style="color:var(--neon)">CUBE RNG v3.5</h1>
+        <div id="load-bar-bg"><div id="load-bar"></div></div>
+    </div>
+
+    <div id="global-msg"></div>
+
+    <div id="auth-choice" class="screen" style="display:flex;">
+        <div class="card">
+            <h2 style="color:var(--neon)">BEM-VINDO</h2>
+            <button class="btn" onclick="showScreen('auth-login')">ENTRAR</button>
+            <button class="btn" style="background:var(--gold)" onclick="showScreen('auth-register')">CRIAR CONTA</button>
+        </div>
+    </div>
+
+    <div id="auth-login" class="screen">
+        <div class="card">
+            <h3>LOGIN</h3>
+            <input id="l-name" placeholder="Usuário">
+            <input id="l-pass" type="password" placeholder="Senha">
+            <button class="btn" style="background:var(--green)" onclick="login()">ACESSAR</button>
+            <button class="btn" onclick="showScreen('auth-choice')">VOLTAR</button>
+        </div>
+    </div>
+
+    <div id="auth-register" class="screen">
+        <div class="card">
+            <h3>REGISTRAR</h3>
+            <input id="r-name" placeholder="Usuário">
+            <input id="r-pass" type="password" placeholder="Senha">
+            <button class="btn" style="background:var(--gold)" onclick="register()">CRIAR CONTA</button>
+            <button class="btn" onclick="showScreen('auth-choice')">VOLTAR</button>
+        </div>
+    </div>
+
+    <div id="lobby" class="screen">
+        <div class="card">
+            <h2 id="pwr-display">---</h2>
+            <div style="margin-bottom:15px">💰 <span id="ui-coins">0</span> | 🍀 <span id="ui-luck">1</span>x</div>
+            <button class="btn" style="background:magenta; color:#fff" onclick="girar()">GIRAR PODER (20 💰)</button>
+            <button class="btn" style="background:var(--green)" onclick="showScreen('scr-servers')">JOGAR (MULTIPLAYER)</button>
+            <button class="btn" style="background:var(--gold)" onclick="openM('m-codes')">CÓDIGOS</button>
+            <button class="btn" onclick="openM('m-sorte')">LOJA DE SORTE</button>
+            <button class="btn" onclick="openM('m-indice')">ÍNDICE</button>
+            <button class="btn" onclick="openM('m-config')">CORES</button>
+            <button class="btn" onclick="openM('m-feedback')">FEEDBACK</button>
+            <button id="adm-btn" class="btn" style="background:red; color:#fff; display:none" onclick="openM('m-adm')">🛡️ PAINEL STAFF 🔐</button>
+            <button class="btn" onclick="logout()" style="background:#333; color:#fff">SAIR</button>
+        </div>
+    </div>
+
+    <div id="scr-servers" class="screen">
+        <div class="card">
+            <h3>ESCOLHA UM SERVIDOR</h3>
+            <button class="btn" onclick="jogar('SALA_1')">SERVIDOR BRASIL 1</button>
+            <button class="btn" onclick="jogar('SALA_2')">SERVIDOR BRASIL 2</button>
+            <button class="btn" onclick="jogar('SALA_3')">SERVIDOR PRIVADO</button>
+            <button class="btn" onclick="showScreen('lobby')">VOLTAR</button>
+        </div>
+    </div>
+
+    <div id="m-indice" class="modal"><div class="card"><h3>ÍNDICE</h3><div id="idx-list" class="scroll"></div><button class="btn" onclick="closeM()">FECHAR</button></div></div>
+    <div id="m-sorte" class="modal"><div class="card"><h3>LOJA DE SORTE</h3><div id="luck-list" class="scroll"></div><button class="btn" onclick="closeM()">FECHAR</button></div></div>
+    <div id="m-codes" class="modal"><div class="card"><h3>CÓDIGOS</h3><input id="in-code" placeholder="Código..."><button class="btn" onclick="useCode()">RESGATAR</button><button class="btn" onclick="closeM()">FECHAR</button></div></div>
+    <div id="m-feedback" class="modal"><div class="card"><h3>FEEDBACK</h3><textarea id="feed-text" placeholder="Sua sugestão..."></textarea><button class="btn" onclick="sendFeed()">ENVIAR</button><button class="btn" onclick="closeM()">VOLTAR</button></div></div>
+    
+    <div id="m-config" class="modal"><div class="card">
+        <h3>CORES</h3>
+        Chão: <input type="color" id="cfg-bg" value="#050505"><br>
+        Borda: <input type="color" id="cfg-border" value="#ff0000"><br>
+        <button class="btn" onclick="saveMap()">SALVAR</button>
+        <button class="btn" onclick="closeM()">VOLTAR</button>
+    </div></div>
+
+    <div id="m-adm" class="modal"><div class="card">
+        <h3 style="color:red">PAINEL STAFF 🔐</h3>
+        <p style="font-size: 10px; color: var(--gold);">CHAT STAFF:</p>
+        <div id="staff-chat-list" class="scroll" style="height: 100px; border: 1px solid #333;"></div>
+        <input id="staff-chat-in" placeholder="Mensagem staff..."><button class="btn" style="background:var(--gold)" onclick="sendStaffChat()">ENVIAR CHAT</button>
+        <hr style="border: 0.5px solid #333; margin: 10px 0;">
+        <div id="adm-feed-list" class="scroll" style="height: 80px;"></div>
+        <input id="adm-global" placeholder="Aviso Global"><button class="btn" onclick="setGlobal()">AVISAR</button>
+        <input id="adm-target" placeholder="Banir Nome"><button class="btn" style="background:red; color:#fff" onclick="admBan()">BANIR</button>
+        <button class="btn" onclick="closeM()">FECHAR</button>
+    </div></div>
+
+    <div id="hud">
+        <div id="stats">HP: <span id="p-hp">100</span> | <span id="hud-pwr">---</span> | <span id="hud-sala">---</span></div>
+        <div id="joy-base"><div id="joy-stick"></div></div>
+        <div id="actions">
+            <button class="act-btn" onclick="skill(1)">S1</button>
+            <button class="act-btn" onclick="skill(2)">ATK</button>
+        </div>
+        <button style="position:absolute; top:20px; right:20px; background:red; color:#fff; padding:12px; border-radius:12px; pointer-events:auto;" onclick="sair()">SAIR</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const firebaseConfig = { databaseURL: "https://cuberngmulttester-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+        const rtdb = firebase.database();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const ADMS = { "kaique": "6767adm", "Betzin": "BetGulosa" };
+        const isStaff = (n) => ADMS.hasOwnProperty(n);
+
+        let db = JSON.parse(localStorage.getItem('crng_v3_5')) || { users: {}, banned: [], feeds: [], bg: "#050505", border: "#ff0000" };
+        let cur = null, gameActive = false, currentSala = "SALA_1", joyId = null;
+        let p = { x: 2000, y: 2000, hp: 100, speed: 8, joyX: 0, joyY: 0 };
+        let otherPlayers = {};
+
+        const PODERES = [
+            { n: "Comum", c: "#aaaaaa", d: 10 }, { n: "Fogo", c: "#ff4500", d: 55 }, 
+            { n: "Gelo", c: "#00f2ff", d: 50 }, { n: "Sombra", c: "#a020f0", d: 85 }, 
+            { n: "Raio", c: "#ffff00", d: 115 }, { n: "ANJO SUPREMO", c: "#ffffff", d: 1000 }
+        ];
+
+        window.onload = () => {
+            let width = 0;
+            const bar = document.getElementById('load-bar');
+            const interval = setInterval(() => {
+                width += 5; bar.style.width = width + '%';
+                if(width >= 100) { clearInterval(interval); document.getElementById('loading-screen').style.display = 'none'; }
+            }, 50);
+
+            rtdb.ref('global').on('value', s => { if(s.val()) showGlobal(s.val()); });
+            
+            rtdb.ref('staff_chat').on('value', s => {
+                if(!cur || !isStaff(cur)) return;
+                let h = "";
+                s.forEach(m => {
+                    let msgData = m.val();
+                    h += `<div style="margin-bottom:5px; border-bottom:1px solid #222; padding-bottom:2px;">
+                            <span style="color:var(--gold); font-weight:bold;">[${msgData.user}]:</span> 
+                            <span>${msgData.msg}</span>
+                          </div>`;
+                });
+                let div = document.getElementById('staff-chat-list');
+                div.innerHTML = h;
+                div.scrollTop = div.scrollHeight;
+            });
+        };
+
+        function save() { localStorage.setItem('crng_v3_5', JSON.stringify(db)); }
+        function showScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.style.display='none'); document.getElementById(id).style.display='flex'; }
+        function openM(id) { document.getElementById(id).style.display='flex'; if(id==='m-indice') renderIndice(); if(id==='m-sorte') renderSorte(); if(id==='m-adm') renderAdmFeeds(); }
+        function closeM() { document.querySelectorAll('.modal').forEach(m=>m.style.display='none'); }
+
+        function login() {
+            let uName = document.getElementById('l-name').value.trim();
+            let pass = document.getElementById('l-pass').value;
+            if(db.banned && db.banned.includes(uName.toLowerCase())) return alert("BANIDO!");
+            
+            if(isStaff(uName) && pass === ADMS[uName]) {
+                if(!db.users[uName]) db.users[uName] = { pass, coins: 99999, luck: 1, pwr: PODERES[5], usedCodes: [] };
+                cur = uName; document.getElementById('adm-btn').style.display = 'block';
+            } else if(db.users[uName] && db.users[uName].pass === pass) {
+                cur = uName; 
+                if(!db.users[cur].usedCodes) db.users[cur].usedCodes = [];
+                if(isStaff(cur)) document.getElementById('adm-btn').style.display = 'block';
+            } else return alert("Erro!");
+            showScreen('lobby'); updateUI();
+        }
+
+        function register() {
+            let u = document.getElementById('r-name').value.trim();
+            let pass = document.getElementById('r-pass').value;
+            if(db.users[u] || isStaff(u)) return alert("Erro!");
+            db.users[u] = { pass, coins: 500, luck: 1, pwr: PODERES[0], usedCodes: [] };
+            save(); alert("Criado!"); showScreen('auth-login');
+        }
+
+        function girar() {
+            if(db.users[cur].coins < 20) return alert("Sem moedas!");
+            db.users[cur].coins -= 20;
+            let chance = Math.random() * 100;
+            let pwr = PODERES[0];
+            let lk = db.users[cur].luck || 1;
+            if(chance < 1 * lk) pwr = PODERES[5];
+            else if(chance < 5 * lk) pwr = PODERES[4];
+            else if(chance < 15 * lk) pwr = PODERES[3];
+            else if(chance < 40 * lk) pwr = PODERES[1];
+            db.users[cur].pwr = pwr;
+            save(); updateUI();
+        }
+
+        function jogar(sala) { 
+            currentSala = sala; gameActive = true; 
+            document.getElementById('scr-servers').style.display='none'; 
+            document.getElementById('hud').style.display='block'; 
+            document.getElementById('hud-sala').innerText = sala;
+            const pRef = rtdb.ref(`servers/${currentSala}/players/${cur}`);
+            pRef.set({ x: p.x, y: p.y, pwr: db.users[cur].pwr });
+            pRef.onDisconnect().remove();
+            rtdb.ref(`servers/${currentSala}/players`).on('value', s => { otherPlayers = s.val() || {}; });
+            loop(); 
+        }
+
+        function loop() {
+            if(!gameActive) return;
+            p.x += p.joyX * p.speed; p.y += p.joyY * p.speed;
+            p.x = Math.max(60, Math.min(3940, p.x)); p.y = Math.max(60, Math.min(3940, p.y));
+            rtdb.ref(`servers/${currentSala}/players/${cur}`).update({ x: p.x, y: p.y });
+            draw(); requestAnimationFrame(loop);
+        }
+
+        function draw() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            ctx.fillStyle = db.bg; ctx.fillRect(0,0,canvas.width, canvas.height);
+            ctx.save(); ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(0.6, 0.6); ctx.translate(-p.x, -p.y);
+            ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 2;
+            for(let i=0; i<=4000; i+=200) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,4000); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(4000,i); ctx.stroke(); }
+            ctx.strokeStyle = db.border; ctx.lineWidth = 20; ctx.strokeRect(0,0,4000,4000);
+            for(let id in otherPlayers) {
+                if(id === cur) continue;
+                let op = otherPlayers[id];
+                ctx.fillStyle = op.pwr.c; ctx.fillRect(op.x-30, op.y-30, 60, 60);
+                ctx.fillStyle = "white"; ctx.font = "25px Arial"; ctx.textAlign="center"; ctx.fillText(id, op.x, op.y-40);
+            }
+            ctx.fillStyle = db.users[cur].pwr.c; ctx.shadowBlur = 15; ctx.shadowColor = ctx.fillStyle;
+            ctx.fillRect(p.x-30, p.y-30, 60, 60); ctx.restore();
+        }
+
+        window.addEventListener('touchstart', e => { Array.from(e.changedTouches).forEach(t => { if(t.clientX < window.innerWidth/2) joyId = t.identifier; }); });
+        window.addEventListener('touchmove', e => { Array.from(e.touches).forEach(t => { if(t.identifier === joyId) {
+            let b = document.getElementById('joy-base').getBoundingClientRect();
+            p.joyX = (t.clientX - (b.left + 55)) / 50; p.joyY = (t.clientY - (b.top + 55)) / 50;
+            let d = Math.min(1, Math.hypot(p.joyX, p.joyY)); let a = Math.atan2(p.joyY, p.joyX);
+            p.joyX = Math.cos(a)*d; p.joyY = Math.sin(a)*d;
+            document.getElementById('joy-stick').style.transform = `translate(${p.joyX*35}px, ${p.joyY*35}px)`;
+        }}); });
+        window.addEventListener('touchend', e => { Array.from(e.changedTouches).forEach(t => { if(t.identifier === joyId) { p.joyX = 0; p.joyY = 0; joyId = null; document.getElementById('joy-stick').style.transform = `translate(0,0)`; } }); });
+
+        function sair() { gameActive = false; rtdb.ref(`servers/${currentSala}/players/${cur}`).remove(); document.getElementById('hud').style.display='none'; showScreen('lobby'); }
+        function updateUI() {
+            let u = db.users[cur];
+            document.getElementById('ui-coins').innerText = Math.floor(u.coins);
+            document.getElementById('ui-luck').innerText = u.luck;
+            document.getElementById('pwr-display').innerText = u.pwr.n;
+            document.getElementById('pwr-display').style.color = u.pwr.c;
+            document.getElementById('hud-pwr').innerText = u.pwr.n;
+        }
+
+        function useCode() {
+            let codeInput = document.getElementById('in-code').value.trim().toUpperCase();
+            let u = db.users[cur];
+            if(!u.usedCodes) u.usedCodes = [];
+
+            if(u.usedCodes.includes(codeInput)) return alert("Você já usou este código!");
+
+            let prize = 0;
+            let msg = "";
+
+            if(codeInput === "KAIQUE") { prize = 1000; msg = "Código Kaique OK!"; }
+            else if(codeInput === "PÚBLICO") { prize = 100; msg = "Confetes! 🎉 +100 Moedas"; }
+            else if(codeInput === "DEVON") { prize = 100; msg = "Suporte do Dev! +100 Moedas"; }
+            else if(codeInput === "BETA") { prize = 1000; msg = "Recompensa Beta! +1000 Moedas"; }
+            else { return alert("Código Inválido!"); }
+
+            u.coins += prize;
+            u.usedCodes.push(codeInput);
+            updateUI(); save();
+            alert(msg);
+            document.getElementById('in-code').value = "";
+        }
+
+        function renderSorte() {
+            let h = "";
+            for(let i=1; i<=10; i++) h += `<button class="btn" onclick="buyLuck(${i*2}, ${i*1500})">🍀 +${i*2}x - 💰 ${i*1500}</button>`;
+            h += `<hr style="border:0.5px solid #333; margin:10px 0;">`;
+            h += `<button class="btn" style="background:purple; color:white" onclick="buyLuck(50, 50000)">🌀 SORTE ÉPICA +50x - 💰 50k</button>`;
+            h += `<button class="btn" style="background:var(--gold); color:black" onclick="buyLuck(100, 150000)">👑 SORTE DIVINA +100x - 💰 150k</button>`;
+            document.getElementById('luck-list').innerHTML = h;
+        }
+
+        function sendStaffChat() { 
+            let m = document.getElementById('staff-chat-in').value.trim(); 
+            if(m && isStaff(cur)){ 
+                rtdb.ref('staff_chat').push({ user: cur, msg: m }); 
+                document.getElementById('staff-chat-in').value = ""; 
+            } 
+        }
+        function setGlobal() { let m = document.getElementById('adm-global').value; rtdb.ref('global').set(m); closeM(); }
+        function showGlobal(m) { let e = document.getElementById('global-msg'); e.innerText = "STAFF: " + m; e.style.display = "block"; setTimeout(()=>e.style.display="none", 5000); }
+        function renderAdmFeeds() { rtdb.ref('feedbacks').once('value', s => { let h = ""; s.forEach(f => { h += `<p><b>${f.val().user}:</b> ${f.val().msg}</p>`; }); document.getElementById('adm-feed-list').innerHTML = h; }); }
+        function admBan() { let t = document.getElementById('adm-target').value; if(t && !isStaff(t)) { db.ba
